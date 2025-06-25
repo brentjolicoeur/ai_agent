@@ -22,6 +22,7 @@ When a user asks a question or makes a request, make a function call plan. You c
 - Write or overwrite files
 
 All paths you provide should be relative to the working directory. You do not need to specify the working directory in your function calls as it is automatically injected for security reasons.
+Format the result in a numbered list when appropriate.
 """
 
 schema_get_files_info = types.FunctionDeclaration(
@@ -113,27 +114,36 @@ prompt = sys.argv[1]
 messages = [
     types.Content(role="user", parts=[types.Part(text=prompt)]),
     ]
-response = client.models.generate_content(
-    model=model_name, 
-    contents=messages,
-    config=types.GenerateContentConfig(
-        tools=[available_functions], system_instruction=system_prompt)
-)
-function_calls = response.function_calls
-call_result = None
+iterations = 1
+while iterations <= 20:
+    response = client.models.generate_content(
+        model=model_name, 
+        contents=messages,
+        config=types.GenerateContentConfig(
+            tools=[available_functions], system_instruction=system_prompt)
+    )
+    function_calls = response.function_calls
+    call_result = None
 
-if response.function_calls:
-    for call in function_calls:
-        call_result = call_function(call, verbose=('--verbose' in sys.argv))
-        
-        if not call_result.parts[0].function_response.response:
-            raise Exception("Function call failed")
-        
+    for candidate in response.candidates:
+        messages.append(candidate.content)
+    if response.function_calls:
+        for call in function_calls:
+            call_result = call_function(call, verbose=('--verbose' in sys.argv))
+            
+            if not call_result.parts[0].function_response.response:
+                raise Exception("Function call failed")
+            
+            if '--verbose' in sys.argv:
+                print(f"-> {call_result.parts[0].function_response.response}")
+
+            messages.append(call_result)
+        iterations += 1
+    else:
+        print(response.text)
         if '--verbose' in sys.argv:
-            print(f"-> {call_result.parts[0].function_response.response}")
-else:
-    print(response.text)
-    if '--verbose' in sys.argv:
-        print(f"User prompt: {prompt}")
-        print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
-        print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
+            print(f"User prompt: {prompt}")
+            print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
+            print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
+        
+        break
