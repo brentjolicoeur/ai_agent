@@ -2,6 +2,7 @@ import os, sys
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from functions.call_function import call_function
 
 load_dotenv()
 api_key = os.environ.get("GEMINI_API_KEY")
@@ -119,10 +120,17 @@ response = client.models.generate_content(
         tools=[available_functions], system_instruction=system_prompt)
 )
 function_calls = response.function_calls
+call_result = None
 
 if response.function_calls:
     for call in function_calls:
-        print(f"Calling function: {call.name}({call.args})")
+        call_result = call_function(call, verbose=('--verbose' in sys.argv))
+        
+        if not call_result.parts[0].function_response.response:
+            raise Exception("Function call failed")
+        
+        if '--verbose' in sys.argv:
+            print(f"-> {call_result.parts[0].function_response.response}")
 else:
     print(response.text)
     if '--verbose' in sys.argv:
